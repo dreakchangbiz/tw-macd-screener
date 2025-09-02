@@ -6,7 +6,6 @@ import type { ScreenerParams, ScreenerRow, ScreenerResponse } from "@/lib/types"
 
 export const runtime = "edge";
 
-// 先用熱門/權值池；後續要全市場再擴充
 const DEFAULT_TWSE_POOL = [
   "1101","1216","1301","1303","1402","2002","2105","2207","2301","2303","2308","2317","2327","2330",
   "2356","2357","2379","2382","2408","2412","2454","2474","2603","2609","2615","2618","2610",
@@ -36,33 +35,51 @@ export async function POST(req: NextRequest) {
         return;
       }
 
-      const series = tf === "D" ? daily : toWeekly(daily);
-      const closes = series.map(k => k.close);
-      const vols   = series.map(k => k.volume);
-      const lastK  = series.at(-1)!;
+      // 準備兩套頻率的資料：日線 & 週線
+      const weekly = toWeekly(daily);
+
+      // 以畫面選擇的 tf 決定輸出用序列
+      const seriesForOutput = tf === "D" ? daily : weekly;
+      const closesOut = seriesForOutput.map(k => k.close);
+      const volsOut   = seriesForOutput.map(k => k.volume);
+      const lastK  = seriesForOutput.at(-1)!;
       if (lastK.date > latestDate) latestDate = lastK.date;
 
-      const { dif, dea, osc } = macd(closes, fast, slow, signal);
+      // 也各自計算日/週的 MACD，供篩選條件使用
+      const { dif: difD, dea: deaD, osc: oscD } = macd(daily.map(k => k.close), fast, slow, signal);
+      const { dif: difW, dea: deaW, osc: oscW } = macd(weekly.map(k => k.close), fast, slow, signal);
+
+      // 用於輸出顯示的 MACD（依 tf）
+      const { dif, dea, osc } = macd(closesOut, fast, slow, signal);
       const sig = lastSignal(dif, dea);
 
-      // 量能過濾：最近一根 > 5MA * 倍數
+      // 量能過濾（依 tf）：最近一根 > 5MA * 倍數
       let volCheck: "OK" | "LOW" | "NA" = "NA";
-      if (vols.length >= 5) {
-        const ma5 = vols.slice(-5).reduce((a, b) => a + b, 0) / 5;
-        volCheck = vols.at(-1)! > ma5 * volMul ? "OK" : "LOW";
+      if (volsOut.length >= 5) {
+        const ma5 = volsOut.slice(-5).reduce((a, b) => a + b, 0) / 5;
+        volCheck = volsOut.at(-1)! > ma5 * volMul ? "OK" : "LOW";
       }
 
-      // ====== 六種過濾條件 ======
-      const n = osc.length - 1;
+      // ====== 篩選條件（含新複合條件） ======
       const pass =
         filter === "ALL" ? true :
-        filter === "MACD_NEG_TO_POS"  ? crossedZero(osc[n-1], osc[n], "UP") :
-        filter === "MACD_POS_TO_NEG"  ? crossedZero(osc[n-1], osc[n], "DOWN") :
-        filter === "MACD_UP_STREAK"   ? isMonotonicStreak(osc, streakLen, "UP") :
-        filter === "MACD_DOWN_STREAK" ? isMonotonicStreak(osc, streakLen, "DOWN") :
-        filter === "DIF_TURN_UP"      ? slopeTurn(dif, "UP") :
-        filter === "DIF_TURN_DOWN"    ? slopeTurn(dif, "DOWN") :
-        true;
+        filter === "MACD_NEG_TO_POS"
+          ? crossedZero(osc.at(-2)!, osc.at(-1)!, "UP")
+          : filter === "MACD_POS_TO_NEG"
+          ? crossedZero(osc.at(-2)!, osc.at(-1)!, "DOWN")
+          : filter === "MACD_UP_STREAK"
+          ? isMonotonicStreak(osc, streakLen, "UP")
+          : filter === "MACD_DOWN_STREAK"
+          ? isMonotonicStreak(osc, streakLen, "DOWN")
+          : filter === "DIF_TURN_UP"
+          ? slopeTurn(dif, "UP")
+          : filter === "DIF_TURN_DOWN"
+          ? slopeTurn(dif, "DOWN")
+          : /* W_UP_AND_D_UP_STREAK：週線上升 + 日線連續上升 */
+            (oscW.length >= 4 && oscD.length >= 4
+              && oscW.at(-1)! > 0
+              && isMonotonicStreak(oscW, 3, "UP")
+              && isMonotonicStreak(oscD, 3, "UP"));
 
       if (!pass) return;
 
@@ -80,7 +97,6 @@ export async function POST(req: NextRequest) {
     const order = { GOLDEN: 0, NONE: 1, DEAD: 2 } as const;
     rows.sort((a, b) => (order[a.signal] - order[b.signal]) || b.osc - a.osc);
 
-    // 用實際最後K線日期（全池最大值）
     const payload: ScreenerResponse = { dataDate: latestDate, tf, rows };
     return NextResponse.json(payload);
   } catch (e: any) {
