@@ -73,6 +73,7 @@ export default function Home() {
                   <option value="MACD_DOWN_STREAK">MACD 連續減少（預設3）</option>
                   <option value="DIF_TURN_UP">DIF 由降轉升（斜率 -→+）</option>
                   <option value="DIF_TURN_DOWN">DIF 由升轉降（斜率 +→-）</option>
+                  <option value="W_UP_AND_D_UP_STREAK">週線上升 + 日線連續上升</option>
                 </select>
               </div>
               <Input label="連續根數" value={streakLen} onChange={setStreakLen} />
