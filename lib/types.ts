@@ -19,13 +19,14 @@ export type Filter =
   | "MACD_UP_STREAK"    // 柱狀圖連續增加（預設3根）
   | "MACD_DOWN_STREAK"  // 柱狀圖連續減少（預設3根）
   | "DIF_TURN_DOWN"     // DIF 由升轉降（斜率 +→-）
-  | "DIF_TURN_UP";      // DIF 由降轉升（斜率 -→+）
+  | "DIF_TURN_UP"       // DIF 由降轉升（斜率 -→+）
+  | "W_UP_AND_D_UP_STREAK"; // 週線上升 + 日線連續上升（新增）
 
 export type ScreenerParams = MacdParams & {
   months: number;
   volumeMultiplier: number;
   tf: TF;              // D=日 / W=週
-  filter: Filter;      // 新增：六種過濾條件
+  filter: Filter;      // 篩選條件
   streakLen?: number;  // 連續判定長度（預設3）
 };
 
