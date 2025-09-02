@@ -1,6 +1,7 @@
+// app/page.tsx
 "use client";
 import { useState } from "react";
-import type { TF } from "@/lib/types";
+import type { TF, Filter } from "@/lib/types";
 
 type Row = { code: string; dif: number; dea: number; osc: number; signal: string; volCheck: string; };
 type Resp = { dataDate: string; tf: TF; rows: Row[] };
@@ -12,7 +13,8 @@ export default function Home() {
   const [months, setMonths] = useState(4);
   const [volMul, setVolMul] = useState(1.2);
   const [tf, setTf] = useState<TF>("D");
-  const [streak, setStreak] = useState<"ALL"|"UP3"|"DOWN3">("ALL");
+  const [filter, setFilter] = useState<Filter>("ALL");
+  const [streakLen, setStreakLen] = useState(3);
 
   const [loading, setLoading] = useState(false);
   const [resp, setResp] = useState<Resp | null>(null);
@@ -22,7 +24,11 @@ export default function Home() {
     const res = await fetch("/api/screener", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ fast, slow, signal, months, volumeMultiplier: volMul, tf, streak }),
+      body: JSON.stringify({
+        fast, slow, signal, months,
+        volumeMultiplier: volMul,
+        tf, filter, streakLen
+      }),
     });
     const data = await res.json();
     setResp(data);
@@ -56,13 +62,20 @@ export default function Home() {
               </div>
             </div>
 
-            <div>
-              <label className="block text-xs">篩選條件</label>
-              <select className="w-full border rounded p-1" value={streak} onChange={(e)=>setStreak(e.target.value as any)}>
-                <option value="ALL">全部</option>
-                <option value="UP3">連續三日/週 DIF 增加</option>
-                <option value="DOWN3">連續三日/週 DIF 減少</option>
-              </select>
+            <div className="grid grid-cols-3 gap-2">
+              <div className="col-span-2">
+                <label className="block text-xs">篩選條件</label>
+                <select className="w-full border rounded p-1" value={filter} onChange={(e)=>setFilter(e.target.value as Filter)}>
+                  <option value="ALL">全部</option>
+                  <option value="MACD_NEG_TO_POS">MACD 負轉正（柱狀圖過零向上）</option>
+                  <option value="MACD_POS_TO_NEG">MACD 正轉負（柱狀圖過零向下）</option>
+                  <option value="MACD_UP_STREAK">MACD 連續增加（預設3）</option>
+                  <option value="MACD_DOWN_STREAK">MACD 連續減少（預設3）</option>
+                  <option value="DIF_TURN_UP">DIF 由降轉升（斜率 -→+）</option>
+                  <option value="DIF_TURN_DOWN">DIF 由升轉降（斜率 +→-）</option>
+                </select>
+              </div>
+              <Input label="連續根數" value={streakLen} onChange={setStreakLen} />
             </div>
 
             <button onClick={run} disabled={loading} className="w-full mt-2 rounded-xl bg-black text-white py-2 disabled:opacity-50">
@@ -73,11 +86,9 @@ export default function Home() {
           <div className="md:col-span-2 bg-white rounded-2xl shadow p-4">
             <h2 className="font-semibold mb-2">輸出結果</h2>
 
-            {/* 日期提示 */}
             {resp && (
               <p className="text-sm text-gray-600 mb-2">
-                📅 數據日期：{resp.dataDate}（最新收盤）
-                {resp.tf === "W" ? "；顯示為週線" : ""}
+                📅 數據日期：{resp.dataDate}（最新收盤）{resp.tf === "W" ? "；顯示為週線" : ""}
               </p>
             )}
 
@@ -113,7 +124,7 @@ export default function Home() {
           </div>
         </div>
 
-        <p className="text-xs text-gray-500">資料來源：TWSE 日K API（收盤後更新）。僅供教學示範，非投資建議。</p>
+        <p className="text-xs text-gray-500">資料來源：TWSE 日K（收盤後更新）。僅供示範，非投資建議。</p>
       </div>
     </main>
   );
@@ -123,7 +134,7 @@ function Input({ label, value, onChange }: {label: string; value: number; onChan
   return (
     <div>
       <label className="block text-xs">{label}</label>
-      <input type="number" className="w-full border rounded p-1" value={value} onChange={(e)=>onChange(parseInt(e.target.value))} />
+      <input type="number" className="w-full border rounded p-1" value={value} onChange={(e)=>onChange(parseInt(e.target.value || "0"))} />
     </div>
   );
 }
@@ -131,7 +142,7 @@ function InputFloat({ label, value, onChange }: {label: string; value: number; o
   return (
     <div>
       <label className="block text-xs">{label}</label>
-      <input type="number" step="0.1" className="w-full border rounded p-1" value={value} onChange={(e)=>onChange(parseFloat(e.target.value))} />
+      <input type="number" step="0.1" className="w-full border rounded p-1" value={value} onChange={(e)=>onChange(parseFloat(e.target.value || "0"))} />
     </div>
   );
 }
